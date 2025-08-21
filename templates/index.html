@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>J Squared Ticket Hub</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root {
+            --sidebar-bg: #212529; --sidebar-link: #adb5bd; --sidebar-hover: #343a40; --sidebar-active: #495057;
+        }
+        body { background-color: #f4f7f6; font-family: 'Inter', sans-serif; }
+        .sidebar { height: 100vh; position: fixed; top: 0; left: 0; width: 220px; background-color: var(--sidebar-bg); color: white; transition: width 0.3s; }
+        .sidebar-header { padding: 1rem; border-bottom: 1px solid var(--sidebar-hover); font-weight: bold; font-size: 1.1rem; }
+        .sidebar .nav-link { color: var(--sidebar-link); padding: 0.6rem 1rem; display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; white-space: nowrap; }
+        .sidebar .nav-link .fa-fw { font-size: 1rem; }
+        .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #ffffff; background-color: var(--sidebar-active); }
+        .sidebar-heading { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .05em; }
+        .main-content { margin-left: 220px; padding: 2rem; transition: margin-left 0.3s; }
+        .view { display: none; }
+        .view.active { display: block; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .toast-container { z-index: 1100; }
+        .clickable-row:hover { background-color: #e9ecef; cursor: pointer; }
+        .comment-box, #chat-messages { max-height: 400px; overflow-y: auto; }
+        .comment { background-color: #f8f9fa; border-radius: 0.5rem; }
+        .comment.is-user { background-color: #e0f7fa; }
+        .stat-card { text-align: center; }
+        .stat-card .display-4 { font-weight: bold; }
+        .public-portal-header { text-align: center; padding: 3rem 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 0.5rem; }
+        .pricing-tier { border: 1px solid #dee2e6; border-radius: .375rem; padding: 1.5rem; transition: all 0.2s ease-in-out; }
+        .pricing-tier.active { border-color: var(--bs-primary); box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); transform: scale(1.02); }
+        .overdue { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <!-- This container will be hidden when the user is not logged in -->
+    <div id="app-container" style="display: none;">
+        <!-- Sidebar -->
+        <div class="sidebar d-flex flex-column p-0">
+            <div class="sidebar-header"><i class="fas fa-ticket-alt me-2"></i> J Squared Hub</div>
+            <nav id="nav-menu" class="nav flex-column"></nav>
+            <div id="user-info" class="mt-auto p-3 border-top border-secondary small"></div>
+        </div>
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- All authenticated views are now correctly placed here -->
+            <div id="dashboard-view" class="view"></div>
+            <div id="create-ticket-view" class="view"></div>
+            <div id="ticket-detail-view" class="view"></div>
+            <div id="users-view" class="view"></div>
+            <div id="user-detail-view" class="view"></div>
+            <div id="assets-view" class="view"></div>
+            <div id="analytics-view" class="view"></div>
+            <div id="chatroom-view" class="view"></div>
+            <div id="kb-view" class="view"></div>
+            <div id="register-view" class="view"></div>
+            <div id="pc-repair-admin-view" class="view"></div>
+            <div id="groups-view" class="view"></div>
+            <div id="pricing-view" class="view"></div>
+            <div id="audit-logs-view" class="view"></div>
+        </main>
+    </div>
+    <!-- Public Views (Login, PC Repair) -->
+    <div id="public-container">
+        <!-- Login View -->
+        <div id="login-view" class="view container mt-5">
+            <div class="row justify-content-center">
+                <div class="col-md-6 col-lg-4">
+                    <div class="text-center mb-4">
+                        <h1 class="h3 mb-3 fw-normal">J Squared Hub</h1>
+                        <p>Sign in to manage your tickets.</p>
+                    </div>
+                    <div class="card shadow-sm"><div class="card-body"><form id="login-form"><div class="mb-3"><label for="email" class="form-label">Email</label><input type="email" class="form-control" id="email" required></div><div class="mb-3"><label for="password" class="form-label">Password</label><input type="password" class="form-control" id="password" required></div><button type="submit" class="btn btn-primary w-100"><i class="fas fa-arrow-right me-2"></i>Login</button></form></div></div>
+                    <div class="text-center mt-3">
+                        <a href="#" onclick="showPublicView('pc-repair-view')">Need a personal PC repair?</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- PC Repair Request View -->
+        <div id="pc-repair-view" class="view container mt-5">
+            <div class="row justify-content-center">
+                <div class="col-md-8 col-lg-6">
+                    <div class="public-portal-header mb-4">
+                        <h2>Personal PC Repair Service</h2>
+                        <p class="lead">Fast, reliable, and local tech support for your personal devices.</p>
+                    </div>
+                    <div class="card shadow-sm"><div class="card-body"><form id="pc-repair-form"><div class="mb-3"><label for="customer-name" class="form-label">Full Name</label><input type="text" class="form-control" id="customer-name" required></div><div class="mb-3"><label for="customer-email" class="form-label">Email Address</label><input type="email" class="form-control" id="customer-email" required></div><div class="mb-3"><label for="device-type" class="form-label">Device Type (e.g., Dell Laptop, Custom PC)</label><input type="text" class="form-control" id="device-type" required></div><div class="mb-3"><label for="issue-description" class="form-label">Describe the Issue</label><textarea class="form-control" id="issue-description" rows="4" required></textarea></div><button type="submit" class="btn btn-success w-100">Submit Request</button></form></div></div>
+                     <div class="text-center mt-3">
+                        <a href="#" onclick="showPublicView('login-view')">Back to Business Login</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+   
+    <!-- Modals -->
+    <div class="modal fade" id="assignTicketModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Assign Ticket</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form><input type="hidden" id="assign-ticket-id"><div class="mb-3"><label for="tech-select" class="form-label">Select Technician</label><select id="tech-select" class="form-select"></select></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><button type="button" class="btn btn-primary" id="submit-assignment-btn">Assign</button></div></div></div></div>
+    <div class="modal fade" id="resolveTicketModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Resolve Ticket</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="resolve-ticket-form"><input type="hidden" id="resolve-ticket-id"><div class="mb-3"><label for="resolution-notes" class="form-label">Resolution Notes</label><textarea id="resolution-notes" class="form-control" rows="4" required></textarea></div><div class="mb-3"><label for="time-spent-input" class="form-label">Time Spent (minutes)</label><input type="number" id="time-spent-input" class="form-control" min="0" value="0"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><button type="button" class="btn btn-success" id="submit-resolution-btn">Mark as Resolved</button></div></div></div></div>
+    <!-- Toast -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3"><div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"><div class="toast-header"><strong class="me-auto">Notification</strong><button type="button" class="btn-close" data-bs-dismiss="toast"></button></div><div class="toast-body"></div></div></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const state = {
+            role: null, email: null, modals: {}, toast: null, currentView: 'login-view', ticketsCache: [], charts: {}, socket: null, allUsers: [], allGroups: [], kbArticles: [], countdownIntervals: []
+        };
+        // --- Core UI & State Management ---
+        function showView(viewId) {
+            document.querySelectorAll('.main-content .view').forEach(v => v.classList.remove('active'));
+            const view = document.getElementById(viewId);
+            if (view) view.classList.add('active');
+            state.currentView = viewId;
+           
+            switch(viewId) {
+                case 'dashboard-view': fetchTickets(); break;
+                case 'create-ticket-view': renderCreateTicketForm(); break;
+                case 'assets-view': fetchAssets(); break;
+                case 'analytics-view': fetchAnalytics(); break;
+                case 'users-view': fetchUsers(); break;
+                case 'chatroom-view': fetchChatMessages(); break;
+                case 'kb-view': fetchKbArticles(); break;
+                case 'pc-repair-admin-view': fetchPcRepairRequests(); break;
+                case 'groups-view': fetchGroups(); break;
+                case 'pricing-view': renderPricingCalculator(); break;
+                case 'register-view': renderRegisterForm(); break;
+                case 'audit-logs-view': fetchAuditLogs(); break;
+            }
+            updateNavLinks();
+            state.countdownIntervals.forEach(clearInterval);
+            state.countdownIntervals = [];
+        }
+        function showPublicView(viewId) {
+            document.querySelectorAll('#public-container .view').forEach(v => v.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+        }
+        function renderApp() {
+            const loggedIn = !!state.role;
+            document.getElementById('app-container').style.display = loggedIn ? 'block' : 'none';
+            document.getElementById('public-container').style.display = loggedIn ? 'none' : 'block';
+            if (loggedIn) {
+                updateUI();
+                showView('dashboard-view');
+            } else {
+                showPublicView('login-view');
+            }
+        }
+        function showToast(message, isError = false) {
+            const toastBody = state.toast._element.querySelector('.toast-body');
+            toastBody.textContent = message;
+            state.toast._element.querySelector('.toast-header').classList.toggle('bg-danger', isError);
+            state.toast._element.querySelector('.toast-header').classList.toggle('text-white', isError);
+            state.toast.show();
+        }
+        function updateNavLinks() {
+            document.querySelectorAll('#nav-menu .nav-link').forEach(link => {
+                link.classList.toggle('active', link.getAttribute('data-view') === state.currentView);
+            });
+        }
+        function updateUI() {
+            const nav = document.getElementById('nav-menu');
+            const userInfo = document.getElementById('user-info');
+            nav.innerHTML = '';
+           
+            if (state.role) {
+                let navLinks = `
+                    <a class="nav-link" href="#" data-view="dashboard-view"><i class="fas fa-tachometer-alt fa-fw"></i> Dashboard</a>
+                    ${(state.role === 'admin' || state.role === 'client') ? `<a class="nav-link" href="#" data-view="create-ticket-view"><i class="fas fa-plus-circle fa-fw"></i> Create Ticket</a>` : ''}
+                    ${(state.role === 'admin' || state.role === 'technician') ? `<a class="nav-link" href="#" data-view="chatroom-view"><i class="fas fa-comments fa-fw"></i> Internal Chat</a>` : ''}
+                    <a class="nav-link" href="#" data-view="kb-view"><i class="fas fa-book fa-fw"></i> Knowledge Base</a>
+                `;
+                if (state.role === 'admin' || state.role === 'technician') {
+                    navLinks += `
+                        <hr class="mx-3 my-2">
+                        <h6 class="sidebar-heading px-3 mt-2 mb-1 text-muted">Services</h6>
+                        <a class="nav-link" href="#" data-view="pc-repair-admin-view"><i class="fas fa-tools fa-fw"></i> PC Repairs</a>
+                        <a class="nav-link" href="#" data-view="pricing-view"><i class="fas fa-calculator fa-fw"></i> Pricing & Services</a>
+                    `;
+                }
+                if (state.role === 'admin') {
+                    navLinks += `
+                        <hr class="mx-3 my-2">
+                        <h6 class="sidebar-heading px-3 mt-2 mb-1 text-muted">Admin</h6>
+                        <a class="nav-link" href="#" data-view="assets-view"><i class="fas fa-box fa-fw"></i> Assets</a>
+                        <a class="nav-link" href="#" data-view="users-view"><i class="fas fa-users-cog fa-fw"></i> Users</a>
+                        <a class="nav-link" href="#" data-view="groups-view"><i class="fas fa-building fa-fw"></i> Groups</a>
+                        <a class="nav-link" href="#" data-view="analytics-view"><i class="fas fa-chart-line fa-fw"></i> Analytics</a>
+                        <a class="nav-link" href="#" data-view="audit-logs-view"><i class="fas fa-file-alt fa-fw"></i> Audit Logs</a>
+                        <a class="nav-link" href="#" data-view="register-view"><i class="fas fa-user-plus fa-fw"></i> Register User</a>
+                    `;
+                }
+                navLinks += `<a class="nav-link mt-auto" href="#" onclick="handleLogout(event)"><i class="fas fa-sign-out-alt fa-fw"></i> Logout</a>`;
+                nav.innerHTML = navLinks;
+               
+                userInfo.innerHTML = `Logged in as: <br><strong>${state.email}</strong><br>(${state.role})`;
+               
+                if (state.role === 'admin' || state.role === 'technician') {
+                    connectToChat();
+                }
+               
+                document.querySelectorAll('#nav-menu .nav-link[data-view]').forEach(link => {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        showView(link.getAttribute('data-view'));
+                    });
+                });
+            } else {
+                userInfo.innerHTML = '';
+                if (state.socket) {
+                    state.socket.disconnect();
+                    state.socket = null;
+                }
+            }
+        }
+        // --- API & Event Handlers ---
+        async function handleLogin(event) {
+            event.preventDefault();
+            const response = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: document.getElementById('email').value, password: document.getElementById('password').value }) });
+            const data = await response.json();
+            if (response.ok) {
+                await checkLoginStatus();
+            } else {
+                showToast(data.message, true);
+            }
+        }
+        async function checkLoginStatus() {
+            try {
+                const response = await fetch('/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    state.role = data.role;
+                    state.email = data.email;
+                } else {
+                    state.role = null;
+                    state.email = null;
+                }
+            } catch (error) {
+                state.role = null;
+                state.email = null;
+            } finally {
+                renderApp();
+            }
+        }
+        async function handleLogout(event) {
+            event.preventDefault();
+            await fetch('/logout', { method: 'POST' });
+            state.role = null;
+            state.email = null;
+            showToast('Logged out successfully.');
+            renderApp();
+        }
+        // --- PC Repair Portal Logic ---
+        async function handlePcRepairSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            const body = {
+                customer_name: form.querySelector('#customer-name').value,
+                customer_email: form.querySelector('#customer-email').value,
+                device_type: form.querySelector('#device-type').value,
+                issue_description: form.querySelector('#issue-description').value,
+            };
+            const response = await fetch('/pc-repair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const data = await response.json();
+            showToast(data.message, !response.ok);
+            if (response.ok) form.reset();
+        }
+        async function fetchPcRepairRequests() {
+            const view = document.getElementById('pc-repair-admin-view');
+            view.innerHTML = `<h2><i class="fas fa-tools me-2"></i>PC Repair Requests</h2><div id="pc-repair-list">Loading...</div>`;
+            const response = await fetch('/pc-repair/requests');
+            const requests = await response.json();
+            const list = view.querySelector('#pc-repair-list');
+            if (requests.length === 0) {
+                list.innerHTML = `<div class="alert alert-info">No pending repair requests.</div>`;
+                return;
+            }
+            list.innerHTML = `
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <table class="table table-hover">
+                            <thead><tr><th>ID</th><th>Customer</th><th>Device</th><th>Status</th><th>Submitted</th><th>Assigned To</th></tr></thead>
+                            <tbody>
+                                ${requests.map(r => `
+                                    <tr class="clickable-row">
+                                        <td>#${r.id}</td>
+                                        <td>${r.customer_name}<br><small class="text-muted">${r.customer_email}</small></td>
+                                        <td>${r.device_type}</td>
+                                        <td><span class="badge bg-warning">${r.status}</span></td>
+                                        <td>${new Date(r.created_at).toLocaleDateString()}</td>
+                                        <td>${r.assigned_tech_email || 'Unassigned'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+        // --- Knowledge Base Logic ---
+        async function fetchKbArticles(searchTerm = '') {
+            const view = document.getElementById('kb-view');
+            view.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2><i class="fas fa-book me-2"></i>Knowledge Base</h2>
+                    ${(state.role === 'admin' || state.role === 'technician') ? '<button id="create-article-btn" class="btn btn-primary"><i class="fas fa-plus me-2"></i>New Article</button>' : ''}
+                </div>
+                <div class="input-group mb-3">
+                    <input type="text" id="kb-search-input" class="form-control" placeholder="Search articles..." value="${searchTerm}">
+                    <button id="kb-search-btn" class="btn btn-outline-secondary" type="button"><i class="fas fa-search"></i></button>
+                </div>
+                <div id="kb-articles-container">Loading...</div>
+            `;
+            const response = await fetch(`/kb/articles?search=${encodeURIComponent(searchTerm)}`);
+            state.kbArticles = await response.json();
+            renderKbArticles();
+           
+            document.getElementById('kb-search-btn').addEventListener('click', () => {
+                fetchKbArticles(document.getElementById('kb-search-input').value);
+            });
+            if (document.getElementById('create-article-btn')) {
+                document.getElementById('create-article-btn').addEventListener('click', () => renderKbArticleForm());
+            }
+        }
+        function renderKbArticles() {
+            const container = document.getElementById('kb-articles-container');
+            if (state.kbArticles.length === 0) {
+                container.innerHTML = `<div class="alert alert-info">No articles found.</div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                    ${state.kbArticles.map(a => `
+                        <div class="col">
+                            <div class="card h-100 clickable-row" onclick="renderKbArticleDetail(${a.id})">
+                                <div class="card-body">
+                                    <h5 class="card-title">${a.title}</h5>
+                                    <p class="card-text">${a.content.substring(0, 100)}...</p>
+                                </div>
+                                <div class="card-footer text-muted small">
+                                    Category: ${a.category} | By: ${a.author_email}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        function renderKbArticleDetail(articleId) {
+            const article = state.kbArticles.find(a => a.id === articleId);
+            const view = document.getElementById('kb-view');
+            view.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2>${article.title}</h2>
+                    <button class="btn btn-secondary" onclick="fetchKbArticles()"><i class="fas fa-arrow-left me-2"></i>Back to Articles</button>
+                </div>
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        Category: ${article.category} | Author: ${article.author_email} | Last Updated: ${new Date(article.last_updated_at).toLocaleString()}
+                    </div>
+                    <div class="card-body" style="white-space: pre-wrap;">
+                        ${article.content}
+                    </div>
+                </div>
+            `;
+        }
+        function renderKbArticleForm() {
+            const view = document.getElementById('kb-view');
+            view.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2>Create New Article</h2>
+                    <button class="btn btn-secondary" onclick="fetchKbArticles()"><i class="fas fa-times me-2"></i>Cancel</button>
+                </div>
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <form id="kb-article-form">
+                            <div class="mb-3">
+                                <label for="kb-title" class="form-label">Title</label>
+                                <input type="text" id="kb-title" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="kb-category" class="form-label">Category</label>
+                                <input type="text" id="kb-category" class="form-control" placeholder="e.g., Networking, Hardware" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="kb-content" class="form-label">Content</label>
+                                <textarea id="kb-content" class="form-control" rows="10" required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Article</button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            document.getElementById('kb-article-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const body = {
+                    title: document.getElementById('kb-title').value,
+                    category: document.getElementById('kb-category').value,
+                    content: document.getElementById('kb-content').value,
+                };
+                const response = await fetch('/kb/articles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await response.json();
+                showToast(data.message, !response.ok);
+                if (response.ok) {
+                    fetchKbArticles();
+                }
+            });
+        }
+        // --- Pricing Calculator Logic ---
+        
+// --- Pricing Calculator Logic ---
+function renderPricingCalculator() {
+    const view = document.getElementById('pricing-view');
+    view.innerHTML = `
+        <h2><i class="fas fa-calculator me-2"></i>Pricing & Services Calculator</h2>
+        <p>Use this tool to generate service estimates for both monthly retainers and individual repairs.</p>
+        
+        <ul class="nav nav-tabs" id="pricingTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="msp-tab" data-bs-toggle="tab" data-bs-target="#msp-panel" type="button" role="tab">Managed Services Estimate</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="repair-tab" data-bs-toggle="tab" data-bs-target="#repair-panel" type="button" role="tab">PC Repair Quote</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="pricingTabContent">
+            <!-- MSP Calculator Panel -->
+            <div class="tab-pane fade show active" id="msp-panel" role="tabpanel">
+                <div class="card card-body border-top-0">
+                    <form id="msp-pricing-form">
+                        <div class="row">
+                            <div class="col-lg-8">
+                                <h4>1. Select Service Tier</h4>
+                                <div class="row" id="msp-tiers"></div>
+                                <hr class="my-4">
+                                <h4>2. Enter Environment Size</h4>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="msp-users" class="form-label">Number of Users: <span id="msp-users-val" class="fw-bold">10</span></label>
+                                        <input type="range" class="form-range" id="msp-users" min="1" max="100" value="10">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="msp-servers" class="form-label">Number of Servers: <span id="msp-servers-val" class="fw-bold">1</span></label>
+                                        <input type="range" class="form-range" id="msp-servers" min="0" max="20" value="1">
+                                    </div>
+                                </div>
+                                <hr class="my-4">
+                                <h4>3. Choose Add-ons</h4>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" value="backup" id="addon-backup">
+                                    <label class="form-check-label" for="addon-backup">Cloud Backup Solution ($10 / user / month)</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" value="security" id="addon-security">
+                                    <label class="form-check-label" for="addon-security">Advanced Endpoint Security ($7 / user / month)</label>
+                                </div>
+                            </div>
+                            <div class="col-lg-4">
+                                <div class="card bg-light sticky-top" style="top: 2rem;">
+                                    <div class="card-header"><h5>Monthly Estimate</h5></div>
+                                    <div class="card-body">
+                                        <ul class="list-group list-group-flush" id="msp-cost-breakdown"></ul>
+                                    </div>
+                                    <div class="card-footer d-grid">
+                                        <h4 class="text-end">Total: <span id="msp-total" class="text-success">$0.00</span></h4>
+                                        <button type="button" class="btn btn-primary mt-2" id="generate-msp-pdf"><i class="fas fa-file-pdf me-2"></i>Generate Statement</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- PC Repair Calculator Panel -->
+            <div class="tab-pane fade" id="repair-panel" role="tabpanel">
+                <div class="card card-body border-top-0">
+                    <form id="repair-pricing-form">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Software Services</h5>
+                                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="diagnostic" id="s-diag"><label class="form-check-label" for="s-diag">Standard Diagnostic ($60)</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="virus_removal" id="s-virus"><label class="form-check-label" for="s-virus">Virus & Malware Removal ($120)</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="os_install" id="s-os"><label class="form-check-label" for="s-os">OS Installation / Refresh ($150)</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="data_recovery" id="s-data"><label class="form-check-label" for="s-data">Data Recovery (Starts at $250)</label></div>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Hardware Services</h5>
+                                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="hardware_install" id="s-hdwr"><label class="form-check-label" for="s-hdwr">Component Install (GPU, RAM, etc.) ($75)</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="screen_replace" id="s-screen"><label class="form-check-label" for="s-screen">Laptop Screen Replacement ($180)</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="liquid_damage" id="s-liquid"><label class="form-check-label" for="s-liquid">Liquid Damage Cleaning ($200)</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="custom_build" id="s-build"><label class="form-check-label" for="s-build">Custom PC Build Consultation ($100)</label></div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="form-check mb-3"><input class="form-check-input" type="checkbox" value="on_site_fee" id="s-onsite"><label class="form-check-label" for="s-onsite">On-Site Service Trip ($50)</label></div>
+                    </form>
+                    <div class="d-flex justify-content-end align-items-center">
+                        <h4 class="me-3 mb-0">Estimated Total: <span id="repair-total" class="text-success">$0.00</span></h4>
+                        <button type="button" class="btn btn-primary" id="generate-repair-pdf"><i class="fas fa-file-pdf me-2"></i>Generate Statement</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    setupMspCalculator();
+    setupRepairCalculator();
+}
+
+function setupMspCalculator() {
+    const form = document.getElementById('msp-pricing-form');
+    if (!form) return;
+
+    const tiers = {
+        essential: { name: 'Essential Support', base: 50, perUser: 35, perServer: 150, features: ['Remote Support', 'Patch Management', 'Basic Monitoring'] },
+        proactive: { name: 'Proactive Management', base: 100, perUser: 55, perServer: 250, features: ['All Essential Features', 'On-site Support (4hr/mo)', 'Network Management'] },
+        strategic: { name: 'Strategic Partnership', base: 250, perUser: 75, perServer: 350, features: ['All Proactive Features', 'vCIO Services', 'Security Audits'] }
+    };
+
+    const tierContainer = document.getElementById('msp-tiers');
+    tierContainer.innerHTML = Object.entries(tiers).map(([key, tier], index) => `
+        <div class="col-md-4 mb-3">
+            <div class="pricing-tier h-100 ${index === 0 ? 'active' : ''}">
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="msp-tier" id="tier-${key}" value="${key}" ${index === 0 ? 'checked' : ''}>
+                    <label class="form-check-label" for="tier-${key}">
+                        <h5 class="mb-1">${tier.name}</h5>
+                    </label>
+                </div>
+                <ul class="list-unstyled mt-3 mb-4 small">
+                    ${tier.features.map(f => `<li><i class="fas fa-check text-success me-2"></i>${f}</li>`).join('')}
+                </ul>
+                <p class="mb-0"><strong>$${tier.perUser}</strong>/user + <strong>$${tier.perServer}</strong>/server</p>
+            </div>
+        </div>
+    `).join('');
+
+    const calculateMsp = () => {
+        const selectedTierKey = form.querySelector('input[name="msp-tier"]:checked').value;
+        const tier = tiers[selectedTierKey];
+        
+        const users = parseInt(document.getElementById('msp-users').value);
+        const servers = parseInt(document.getElementById('msp-servers').value);
+        
+        document.getElementById('msp-users-val').textContent = users;
+        document.getElementById('msp-servers-val').textContent = servers;
+
+        document.querySelectorAll('.pricing-tier').forEach(el => el.classList.remove('active'));
+        document.getElementById(`tier-${selectedTierKey}`).closest('.pricing-tier').classList.add('active');
+
+        let total = tier.base;
+        let breakdownHtml = `<li class="list-group-item d-flex justify-content-between"><span>Base Fee</span><span>$${tier.base.toFixed(2)}</span></li>`;
+        
+        total += users * tier.perUser;
+        breakdownHtml += `<li class="list-group-item d-flex justify-content-between"><span>${users} Users @ $${tier.perUser}</span><span>$${(users * tier.perUser).toFixed(2)}</span></li>`;
+
+        if (servers > 0) {
+            total += servers * tier.perServer;
+            breakdownHtml += `<li class="list-group-item d-flex justify-content-between"><span>${servers} Servers @ $${tier.perServer}</span><span>$${(servers * tier.perServer).toFixed(2)}</span></li>`;
+        }
+
+        if (document.getElementById('addon-backup').checked) {
+            total += users * 10;
+            breakdownHtml += `<li class="list-group-item d-flex justify-content-between"><span>Cloud Backup</span><span>$${(users * 10).toFixed(2)}</span></li>`;
+        }
+        if (document.getElementById('addon-security').checked) {
+            total += users * 7;
+            breakdownHtml += `<li class="list-group-item d-flex justify-content-between"><span>Advanced Security</span><span>$${(users * 7).toFixed(2)}</span></li>`;
+        }
+
+        document.getElementById('msp-cost-breakdown').innerHTML = breakdownHtml;
+        document.getElementById('msp-total').textContent = `$${total.toFixed(2)}`;
+    };
+
+    form.addEventListener('input', calculateMsp);
+    document.getElementById('generate-msp-pdf').addEventListener('click', () => generatePdfStatement('msp'));
+    calculateMsp(); // Initial calculation
+}
+
+function setupRepairCalculator() {
+    const form = document.getElementById('repair-pricing-form');
+    if (!form) return;
+
+    const rates = {
+        diagnostic: 60, virus_removal: 120, os_install: 150, data_recovery: 250,
+        hardware_install: 75, screen_replace: 180, liquid_damage: 200, custom_build: 100, on_site_fee: 50
+    };
+
+    const calculateRepair = () => {
+        const checkboxes = form.querySelectorAll('input[type="checkbox"]:checked');
+        const services = Array.from(checkboxes).map(cb => cb.value);
+        const total = services.reduce((acc, service) => acc + (rates[service] || 0), 0);
+        document.getElementById('repair-total').textContent = `$${total.toFixed(2)}`;
+    };
+    
+    form.addEventListener('change', calculateRepair);
+    document.getElementById('generate-repair-pdf').addEventListener('click', () => generatePdfStatement('repair'));
+    calculateRepair(); // Initial calculation
+}
+
+function generatePdfStatement(type) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const today = new Date().toLocaleDateString();
+    let y = 20; // Vertical position tracker
+
+    // --- Header ---
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.text("J Squared Tech Solutions", 105, y, { align: 'center' });
+    y += 10;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Bridgman & Niles, MI", 105, y, { align: 'center' });
+    y += 5;
+    doc.text("contact@jsquared.com | (555) 123-4567", 105, y, { align: 'center' });
+    y += 10;
+    doc.setLineWidth(0.5);
+    doc.line(15, y, 195, y);
+    y += 15;
+
+    // --- Title ---
+    const title = type === 'msp' ? "Managed Services Monthly Estimate" : "PC Repair Service Quote";
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(title, 15, y);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Date: ${today}`, 195, y, { align: 'right' });
+    y += 15;
+
+    // --- Line Items ---
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("Description", 15, y);
+    doc.text("Amount", 195, y, { align: 'right' });
+    y += 7;
+    doc.setLineWidth(0.2);
+    doc.line(15, y, 195, y);
+    y += 8;
+    doc.setFont("helvetica", "normal");
+
+    let total = 0;
+
+    if (type === 'msp') {
+        const breakdownItems = document.querySelectorAll('#msp-cost-breakdown li');
+        breakdownItems.forEach(item => {
+            const description = item.querySelector('span:first-child').textContent;
+            const amount = item.querySelector('span:last-child').textContent;
+            doc.text(description, 15, y);
+            doc.text(amount, 195, y, { align: 'right' });
+            y += 7;
+        });
+        total = document.getElementById('msp-total').textContent;
+    } else { // Repair
+        const form = document.getElementById('repair-pricing-form');
+        const checkboxes = form.querySelectorAll('input[type="checkbox"]:checked');
+        checkboxes.forEach(cb => {
+            const label = cb.nextElementSibling.textContent;
+            const price = parseFloat(label.match(/\(\$([\d.]+)\)/)[1]);
+            doc.text(label.split('(')[0].trim(), 15, y);
+            doc.text(`$${price.toFixed(2)}`, 195, y, { align: 'right' });
+            y += 7;
+        });
+        total = document.getElementById('repair-total').textContent;
+    }
+
+    // --- Total ---
+    y += 10;
+    doc.setLineWidth(0.5);
+    doc.line(120, y, 195, y);
+    y += 7;
+    doc.setFont("helvetica", "bold");
+    doc.text("Total Estimate", 120, y);
+    doc.text(total, 195, y, { align: 'right' });
+    
+    // --- Footer ---
+    y = 270;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setLineWidth(0.2);
+    doc.line(15, y, 195, y);
+    y += 7;
+    doc.text("Thank you for your business!", 105, y, { align: 'center' });
+    y += 5;
+    doc.text("This quote is an estimate and is valid for 30 days. Parts and labor are subject to change.", 105, y, { align: 'center' });
+
+    // --- Save PDF ---
+    doc.save(`J_Squared_${type === 'msp' ? 'Estimate' : 'Quote'}_${today}.pdf`);
+}
+        // --- Chat Functions ---
+        function connectToChat() {
+            if (state.socket) return;
+            state.socket = io();
+            state.socket.on('connect', () => console.log('Connected to chat server'));
+            state.socket.on('receive_message', (data) => appendChatMessage(data));
+            state.socket.on('update_online_users', (users) => {
+                const userList = document.getElementById('online-users-list');
+                if (userList) userList.innerHTML = users.map(user => `<li class="list-group-item">${user}</li>`).join('');
+            });
+        }
+        async function fetchChatMessages() {
+            const view = document.getElementById('chatroom-view');
+            view.innerHTML = `
+                <h2><i class="fas fa-comments me-2"></i>Internal Chat</h2>
+                <div class="row">
+                    <div class="col-md-9">
+                        <div class="card shadow-sm">
+                            <div class="card-header">Team Conversation</div>
+                            <div class="card-body">
+                                <div id="chat-messages" class="comment-box p-2 mb-3"></div>
+                                <form id="chat-form">
+                                    <div class="input-group">
+                                        <input type="text" id="chat-message-input" class="form-control" placeholder="Type a message..." required autocomplete="off">
+                                        <button class="btn btn-primary" type="submit"><i class="fas fa-paper-plane"></i> Send</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card shadow-sm">
+                            <div class="card-header"><i class="fas fa-users me-2"></i>Online</div>
+                            <ul id="online-users-list" class="list-group list-group-flush"></ul>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('chat-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (state.socket) {
+                    const input = document.getElementById('chat-message-input');
+                    state.socket.emit('send_message', { message: input.value });
+                    input.value = '';
+                }
+            });
+            const response = await fetch('/chat/messages');
+            const messages = await response.json();
+            const messageBox = document.getElementById('chat-messages');
+            messageBox.innerHTML = '';
+            messages.forEach(msg => appendChatMessage(msg, false));
+            if (messageBox) messageBox.scrollTop = messageBox.scrollHeight;
+        }
+        function appendChatMessage(data, scroll = true) {
+            const messageBox = document.getElementById('chat-messages');
+            if (!messageBox) return;
+            const isMe = data.user_email === state.email;
+            messageBox.innerHTML += `
+                <div class="p-2 mb-2 comment ${isMe ? 'is-user' : ''}">
+                    <div class="d-flex justify-content-between">
+                        <strong>${isMe ? 'You' : data.user_email}</strong>
+                        <small class="text-muted">${new Date(data.created_at).toLocaleTimeString()}</small>
+                    </div>
+                    <div>${data.message_text}</div>
+                </div>
+            `;
+            if(scroll) messageBox.scrollTop = messageBox.scrollHeight;
+        }
+        // --- Dashboard & Tickets ---
+        async function fetchTickets() {
+            const view = document.getElementById('dashboard-view');
+            view.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2><i class="fas fa-tachometer-alt me-2"></i>Dashboard</h2>
+                    <div class="w-50"><input type="text" id="ticket-filter" class="form-control" placeholder="Filter tickets..."></div>
+                </div>
+                <div class="card shadow-sm"><div class="card-body"><table class="table table-hover"><thead><tr><th>ID</th><th>Client</th><th>Description</th><th>Location</th><th>Priority</th><th>Status</th><th>Created</th><th>Assigned To</th><th>Claim Countdown</th></tr></thead><tbody id="ticket-table-body"></tbody></table></div></div>
+            `;
+            const response = await fetch('/tickets');
+            state.ticketsCache = await response.json();
+            renderTickets(state.ticketsCache);
+            document.getElementById('ticket-filter').addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const filtered = state.ticketsCache.filter(t =>
+                    Object.values(t).some(val => String(val).toLowerCase().includes(searchTerm))
+                );
+                renderTickets(filtered);
+            });
+            startCountdownTimers();
+        }
+        function renderTickets(tickets) {
+            const tableBody = document.getElementById('ticket-table-body');
+            if (!tableBody) return;
+            tableBody.innerHTML = '';
+            tickets.forEach(t => {
+                const row = document.createElement('tr');
+                row.className = 'clickable-row';
+                row.onclick = () => fetchTicketDetails(t.id);
+                const statusColors = { 'open': 'primary', 'in-progress': 'warning', 'resolved': 'success', 'closed': 'secondary' };
+                const priorityColors = { 'high': 'danger', 'medium': 'warning', 'low': 'secondary' };
+                row.innerHTML = `
+                    <td>#${t.id}</td>
+                    <td>${t.client_email}</td>
+                    <td>${t.description.substring(0, 40)}...</td>
+                    <td>${t.location || 'N/A'}</td>
+                    <td><span class="badge bg-${priorityColors[t.priority]}">${t.priority}</span></td>
+                    <td><span class="badge bg-${statusColors[t.status]}">${t.status}</span></td>
+                    <td>${new Date(t.created_at).toLocaleDateString()}</td>
+                    <td>${t.assigned_tech_email || 'Unassigned'}</td>
+                    <td id="claim-countdown-${t.id}"></td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+       
+        async function fetchTicketDetails(ticketId) {
+            const response = await fetch(`/ticket/${ticketId}`);
+            if (!response.ok) { showToast('Could not fetch ticket details.', true); return; }
+            const { ticket, comments, attachments } = await response.json();
+            const view = document.getElementById('ticket-detail-view');
+            view.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3"><h2 id="ticket-detail-title"></h2><button class="btn btn-secondary" onclick="showView('dashboard-view')"><i class="fas fa-arrow-left me-2"></i>Back to Dashboard</button></div>
+                <div class="row"><div class="col-md-8"><div id="resolution-info" class="alert alert-success" style="display:none;"></div><div class="card shadow-sm mb-4"><div class="card-header">Issue Description</div><div class="card-body" id="ticket-detail-description" style="white-space: pre-wrap;"></div></div><div class="card shadow-sm mb-4"><div class="card-header">Attachments</div><div class="card-body" id="attachments-list"></div></div><div class="card shadow-sm"><div class="card-header">Conversation</div><div class="card-body"><div id="comment-box" class="comment-box p-2 mb-3"></div><form id="comment-form"><input type="hidden" id="comment-ticket-id"><div class="input-group"><input type="text" id="comment-text" class="form-control" placeholder="Type your message..." required><input type="file" id="comment-file" class="form-control"><button class="btn btn-primary" type="submit"><i class="fas fa-reply"></i> Reply</button></div></form></div></div></div><div class="col-md-4"><div class="card shadow-sm"><div class="card-header">Ticket Details</div><div class="card-body" id="ticket-detail-sidebar"></div><div class="card-footer" id="ticket-detail-actions"></div></div></div></div>
+            `;
+           
+            document.getElementById('ticket-detail-title').innerHTML = `<i class="fas fa-ticket-alt"></i> Ticket #${ticket.id}`;
+            document.getElementById('comment-ticket-id').value = ticket.id;
+            document.getElementById('ticket-detail-description').textContent = ticket.description;
+            document.getElementById('ticket-detail-sidebar').innerHTML = `<p><strong>Client:</strong> ${ticket.client_email}</p><p><strong>Location:</strong> ${ticket.location || 'Not specified'}</p><p><strong>Status:</strong> <span class="badge bg-info text-dark">${ticket.status}</span></p><p><strong>Priority:</strong> <span class="badge bg-${ticket.priority === 'high' ? 'danger' : 'warning'}">${ticket.priority}</span></p><p><strong>Linked Asset:</strong> ${ticket.linked_asset_name || 'None'}</p><p><strong>Assigned To:</strong> ${ticket.assigned_tech_email || 'Unassigned'}</p><p><strong>Time Spent:</strong> ${ticket.time_spent} minutes</p><p><strong>SLA Response:</strong> <span id="sla-response-${ticket.id}"></span></p><p><strong>SLA Resolution:</strong> <span id="sla-resolution-${ticket.id}"></span></p>`;
+           
+            const commentBox = document.getElementById('comment-box');
+            commentBox.innerHTML = comments.map(c => `<div class="p-2 mb-2 comment ${c.user_email === state.email ? 'is-user' : ''}"><div class="d-flex justify-content-between"><strong>${c.user_email}</strong><small class="text-muted">${new Date(c.created_at).toLocaleString()}</small></div><div>${c.comment_text}</div></div>`).join('');
+            commentBox.scrollTop = commentBox.scrollHeight;
+            const attachmentsList = document.getElementById('attachments-list');
+            attachmentsList.innerHTML = attachments.map(a => `<a href="/uploads/${a.file_path}" target="_blank">${a.file_name}</a> (Uploaded by ${a.uploaded_by_email} at ${new Date(a.created_at).toLocaleString()})<br>`).join('') || 'No attachments';
+            const actions = document.getElementById('ticket-detail-actions');
+            actions.innerHTML = '';
+            if (state.role === 'admin' && ticket.status !== 'resolved') actions.innerHTML += `<button class="btn btn-info w-100 mb-2" onclick='openAssignModal(${ticket.id})'><i class="fas fa-user-tag me-2"></i>Assign</button>`;
+            if ((state.role === 'admin' || state.role === 'technician') && ticket.status !== 'resolved') actions.innerHTML += `<button class="btn btn-success w-100" onclick='openResolveModal(${ticket.id})'><i class="fas fa-check-circle me-2"></i>Resolve</button>`;
+            const resolutionInfo = document.getElementById('resolution-info');
+            if(ticket.status === 'resolved') {
+                resolutionInfo.style.display = 'block';
+                resolutionInfo.innerHTML = `<h5 class="alert-heading">Ticket Resolved</h5><p>Resolved by <strong>${ticket.resolved_by_email}</strong> on ${new Date(ticket.resolved_at).toLocaleDateString()}.</p><hr><p class="mb-0"><strong>Notes:</strong> ${ticket.resolution_notes}</p>`;
+                document.getElementById('comment-form').style.display = 'none';
+            } else {
+                document.getElementById('resolution-info').style.display = 'none';
+                document.getElementById('comment-form').style.display = 'flex';
+                document.getElementById('comment-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const ticketId = document.getElementById('comment-ticket-id').value;
+                    const formData = new FormData();
+                    formData.append('comment_text', document.getElementById('comment-text').value);
+                    const fileInput = document.getElementById('comment-file');
+                    if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
+                    await fetch(`/ticket/${ticketId}/comment`, { method: 'POST', body: formData });
+                    document.getElementById('comment-text').value = '';
+                    fileInput.value = '';
+                    fetchTicketDetails(ticketId);
+                });
+            }
+            showView('ticket-detail-view');
+            startTicketCountdowns(ticket);
+        }
+        function startTicketCountdowns(ticket) {
+            if (ticket.assigned_tech_email) return; // Only for unassigned
+            const claimElement = document.getElementById(`claim-countdown-${ticket.id}`);
+            if (claimElement) updateCountdown(claimElement, ticket.created_at, ticket.sla_claim_time * 3600000); // hours to ms
+            const responseElement = document.getElementById(`sla-response-${ticket.id}`);
+            if (responseElement) updateCountdown(responseElement, ticket.created_at, ticket.sla_response_time * 3600000);
+            const resolutionElement = document.getElementById(`sla-resolution-${ticket.id}`);
+            if (resolutionElement) updateCountdown(resolutionElement, ticket.created_at, ticket.sla_resolution_time * 3600000);
+        }
+        function startCountdownTimers() {
+            state.ticketsCache.forEach(ticket => startTicketCountdowns(ticket));
+            const interval = setInterval(() => {
+                state.ticketsCache.forEach(ticket => startTicketCountdowns(ticket));
+            }, 60000); // Update every minute
+            state.countdownIntervals.push(interval);
+        }
+        function updateCountdown(element, startTime, durationMs) {
+            const start = new Date(startTime).getTime();
+            const now = Date.now();
+            const timeLeft = start + durationMs - now;
+            if (timeLeft > 0) {
+                const hours = Math.floor(timeLeft / 3600000);
+                const minutes = Math.floor((timeLeft % 3600000) / 60000);
+                element.textContent = `${hours}h ${minutes}m left`;
+                element.classList.remove('overdue');
+            } else {
+                const overdue = Math.abs(timeLeft);
+                const hours = Math.floor(overdue / 3600000);
+                const minutes = Math.floor((overdue % 3600000) / 60000);
+                element.textContent = `Overdue by ${hours}h ${minutes}m`;
+                element.classList.add('overdue');
+            }
+        }
+        // --- Users Management ---
+        async function fetchUsers() {
+            const response = await fetch('/users');
+            state.allUsers = await response.json();
+            renderUsersView();
+        }
+       
+        function renderUsersView() {
+            const view = document.getElementById('users-view');
+            view.innerHTML = `
+                <h2><i class="fas fa-users-cog me-2"></i>User Management</h2>
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <table class="table table-hover">
+                            <thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Group</th><th>Status</th></tr></thead>
+                            <tbody>
+                                ${state.allUsers.map(u => `
+                                    <tr class="clickable-row" onclick="fetchUserDetails(${u.id})">
+                                        <td>${u.id}</td>
+                                        <td>${u.email}</td>
+                                        <td>${u.role}</td>
+                                        <td>${u.group_name || 'N/A'}</td>
+                                        <td><span class="badge bg-${u.status === 'active' ? 'success' : 'danger'}">${u.status}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+        async function fetchUserDetails(userId) {
+            showView('user-detail-view');
+            const view = document.getElementById('user-detail-view');
+            view.innerHTML = `<h2>User Details</h2><p>Loading...</p>`;
+            const response = await fetch(`/user/${userId}`);
+            const data = await response.json();
+            view.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2>${data.user.email}</h2>
+                    <button class="btn btn-secondary" onclick="showView('users-view')"><i class="fas fa-arrow-left me-2"></i>Back</button>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-header">User Information</div>
+                    <div class="card-body">
+                        <p><strong>Role:</strong> ${data.user.role}</p>
+                        <p><strong>Status:</strong> ${data.user.status}</p>
+                        <p><strong>Group:</strong> ${data.user.group_name || 'None'}</p>
+                    </div>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-header">Associated Tickets</div>
+                    <div class="card-body">
+                        ${data.tickets.length ? `<table class="table"><thead><tr><th>ID</th><th>Description</th><th>Status</th></tr></thead><tbody>${data.tickets.map(t => `<tr><td>${t.id}</td><td>${t.description}</td><td>${t.status}</td></tr>`).join('')}</tbody></table>` : '<p>No tickets</p>'}
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">Assigned Assets</div>
+                    <div class="card-body">
+                        ${data.assets.length ? `<ul>${data.assets.map(a => `<li>${a.asset_name} (${a.status})</li>`).join('')}</ul>` : '<p>No assets</p>'}
+                    </div>
+                </div>
+            `;
+        }
+        // --- Create Ticket ---
+        async function renderCreateTicketForm() {
+            const view = document.getElementById('create-ticket-view');
+            const response = await fetch('/my-assets');
+            const assets = await response.json();
+            view.innerHTML = `
+                <h2><i class="fas fa-plus-circle me-2"></i>Create New Ticket</h2>
+                <div class="card shadow-sm"><div class="card-body"><form id="ticket-form">
+                    <div class="mb-3"><label for="description" class="form-label">Issue Description</label><textarea class="form-control" id="description" rows="4" required></textarea></div>
+                    <div class="mb-3"><label for="location" class="form-label">Location (e.g., Bridgman Office, Niles Retail)</label><input type="text" class="form-control" id="location" required></div>
+                    <div class="mb-3"><label for="asset-select" class="form-label">Related Asset (Optional)</label><select class="form-select" id="asset-select"><option value="">None</option>${assets.map(a => `<option value="${a.id}">${a.asset_name}</option>`).join('')}</select></div>
+                    <div class="mb-3"><label for="priority" class="form-label">Priority</label><select class="form-select" id="priority" required><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
+                    <div class="mb-3"><label for="ticket-file" class="form-label">Attach File (Optional)</label><input type="file" class="form-control" id="ticket-file"></div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane me-2"></i>Submit Ticket</button>
+                </form></div></div>
+            `;
+            document.getElementById('ticket-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData();
+                formData.append('description', document.getElementById('description').value);
+                formData.append('location', document.getElementById('location').value);
+                formData.append('asset_id', document.getElementById('asset-select').value || null);
+                formData.append('priority', document.getElementById('priority').value);
+                const fileInput = document.getElementById('ticket-file');
+                if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
+                const response = await fetch('/ticket', { method: 'POST', body: formData });
+                const data = await response.json();
+                showToast(data.message, !response.ok);
+                if (response.ok) showView('dashboard-view');
+            });
+        }
+        // --- Assets Management ---
+        async function fetchAssets() {
+            const view = document.getElementById('assets-view');
+            const response = await fetch('/assets');
+            const assets = await response.json();
+            const userResponse = await fetch('/users');
+            const users = await userResponse.json();
+            view.innerHTML = `
+                <h2><i class="fas fa-box me-2"></i>Asset Management</h2>
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card shadow-sm">
+                            <div class="card-header">All Assets</div>
+                            <div class="card-body">
+                                <table class="table">
+                                    <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Assigned To</th><th>Status</th></tr></thead>
+                                    <tbody>${assets.map(a => `<tr><td>${a.id}</td><td>${a.asset_name}</td><td>${a.asset_type}</td><td>${a.assigned_user_email || 'Unassigned'}</td><td><span class="badge bg-success">${a.status}</span></td></tr>`).join('')}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm">
+                            <div class="card-header">Add New Asset</div>
+                            <div class="card-body">
+                                <form id="asset-form">
+                                    <div class="mb-2"><label>Name</label><input type="text" id="asset-name" class="form-control" required></div>
+                                    <div class="mb-2"><label>Type</label><input type="text" id="asset-type" class="form-control" placeholder="e.g., Laptop, Monitor" required></div>
+                                    <div class="mb-2"><label>Purchase Date</label><input type="date" id="asset-purchase-date" class="form-control" required></div>
+                                    <div class="mb-3"><label>Assign To (Optional)</label><select id="asset-assign-user" class="form-select"><option value="">Unassigned</option>${users.map(u => `<option value="${u.id}">${u.email}</option>`).join('')}</select></div>
+                                    <button type="submit" class="btn btn-success w-100">Add Asset</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('asset-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const form = e.target;
+                const body = {
+                    asset_name: form.querySelector('#asset-name').value,
+                    asset_type: form.querySelector('#asset-type').value,
+                    purchase_date: form.querySelector('#asset-purchase-date').value,
+                    assigned_user_id: form.querySelector('#asset-assign-user').value || null
+                };
+                const response = await fetch('/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await response.json();
+                showToast(data.message, !response.ok);
+                if (response.ok) fetchAssets();
+            });
+        }
+        // --- Analytics ---
+        async function fetchAnalytics() {
+            const view = document.getElementById('analytics-view');
+            const response = await fetch('/analytics');
+            const data = await response.json();
+            view.innerHTML = `
+                <h2><i class="fas fa-chart-line me-2"></i>Analytics</h2>
+                <div class="row mb-4">
+                    <div class="col-md-6"><div class="card shadow-sm stat-card"><div class="card-body"><h5 class="card-title">Total Tickets</h5><p id="stats-total-tickets" class="display-4">${data.total_tickets}</p></div></div></div>
+                    <div class="col-md-6"><div class="card shadow-sm stat-card"><div class="card-body"><h5 class="card-title">Open Tickets</h5><p id="stats-open-tickets" class="display-4">${data.open_tickets}</p></div></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6"><div class="card shadow-sm"><div class="card-header">Tickets by Status</div><div class="card-body"><canvas id="status-chart"></canvas></div></div></div>
+                    <div class="col-md-6"><div class="card shadow-sm"><div class="card-header">Tickets by Priority</div><div class="card-body"><canvas id="priority-chart"></canvas></div></div></div>
+                </div>
+            `;
+           
+            const chartConfig = (type, labels, chartData, label) => ({ type, data: { labels, datasets: [{ label, data: chartData, borderWidth: 1 }] }, options: { responsive: true } });
+            if(state.charts.status) state.charts.status.destroy();
+            state.charts.status = new Chart(document.getElementById('status-chart'), chartConfig('doughnut', Object.keys(data.by_status), Object.values(data.by_status), '# of Tickets'));
+            if(state.charts.priority) state.charts.priority.destroy();
+            state.charts.priority = new Chart(document.getElementById('priority-chart'), chartConfig('pie', Object.keys(data.by_priority), Object.values(data.by_priority), '# of Tickets'));
+        }
+        // --- Register User ---
+        async function renderRegisterForm() {
+            const view = document.getElementById('register-view');
+            await fetchGroups(); // Ensure groups are loaded
+            view.innerHTML = `
+                <h2><i class="fas fa-user-plus me-2"></i>Register New User</h2>
+                <div class="card shadow-sm"><div class="card-body"><form id="register-form">
+                    <div class="mb-3"><label for="reg-email" class="form-label">Email</label><input type="email" class="form-control" id="reg-email" required></div>
+                    <div class="mb-3"><label for="reg-password" class="form-label">Password</label><input type="password" class="form-control" id="reg-password" required></div>
+                    <div class="mb-3"><label for="reg-role" class="form-label">Role</label><select class="form-select" id="reg-role" required><option value="client">Client</option><option value="technician">Technician</option><option value="admin">Admin</option></select></div>
+                    <div class="mb-3"><label for="reg-group" class="form-label">Group (Optional)</label><select class="form-select" id="reg-group"><option value="">None</option>${state.allGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}</select></div>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-check-circle me-2"></i>Register User</button>
+                </form></div></div>
+            `;
+            document.getElementById('register-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const form = e.target;
+                const body = {
+                    email: form.querySelector('#reg-email').value,
+                    password: form.querySelector('#reg-password').value,
+                    role: form.querySelector('#reg-role').value,
+                    group_id: form.querySelector('#reg-group').value || null
+                };
+                const response = await fetch('/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await response.json();
+                showToast(data.message, !response.ok);
+                if (response.ok) {
+                    form.reset();
+                    showView('users-view');
+                }
+            });
+        }
+        // --- Groups Management ---
+        async function fetchGroups() {
+            const view = document.getElementById('groups-view');
+            view.innerHTML = `<h2><i class="fas fa-building me-2"></i>Groups</h2>
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <table class="table table-hover">
+                                    <thead><tr><th>ID</th><th>Name</th><th>Contact</th><th>Actions</th></tr></thead>
+                                    <tbody id="groups-table-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm">
+                            <div class="card-header">Add New Group</div>
+                            <div class="card-body">
+                                <form id="group-form">
+                                    <div class="mb-3"><label for="group-name" class="form-label">Group Name</label><input type="text" class="form-control" id="group-name" required></div>
+                                    <div class="mb-3"><label for="contact-person" class="form-label">Contact Person</label><input type="text" class="form-control" id="contact-person"></div>
+                                    <div class="mb-3"><label for="contact-email" class="form-label">Contact Email</label><input type="email" class="form-control" id="contact-email"></div>
+                                    <button type="submit" class="btn btn-primary">Create Group</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            const response = await fetch('/groups');
+            state.allGroups = await response.json();
+            const tableBody = view.querySelector('#groups-table-body');
+            tableBody.innerHTML = state.allGroups.map(g => `
+                <tr>
+                    <td>${g.id}</td>
+                    <td>${g.name}</td>
+                    <td>${g.contact_person || 'N/A'} (${g.contact_email || 'N/A'})</td>
+                    <td><button class="btn btn-sm btn-info" onclick="viewGroupDetails(${g.id})">View</button></td>
+                </tr>
+            `).join('');
+            document.getElementById('group-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const body = {
+                    name: document.getElementById('group-name').value,
+                    contact_person: document.getElementById('contact-person').value,
+                    contact_email: document.getElementById('contact-email').value,
+                };
+                const response = await fetch('/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await response.json();
+                showToast(data.message, !response.ok);
+                if (response.ok) fetchGroups();
+            });
+        }
+        async function viewGroupDetails(groupId) {
+            const view = document.getElementById('groups-view');
+            view.innerHTML = `<div class="d-flex justify-content-between align-items-center mb-3">
+                <h2>Group Details</h2>
+                <button class="btn btn-secondary" onclick="fetchGroups()"><i class="fas fa-arrow-left me-2"></i>Back</button>
+            </div><p>Loading...</p>`;
+            const group = state.allGroups.find(g => g.id === groupId);
+            const usersResponse = await fetch(`/groups/${groupId}/users`);
+            const users = await usersResponse.json();
+            view.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2>${group.name}</h2>
+                    <button class="btn btn-secondary" onclick="fetchGroups()"><i class="fas fa-arrow-left me-2"></i>Back</button>
+                </div>
+                <div class="card mb-4">
+                    <div class="card-header">Group Information</div>
+                    <div class="card-body">
+                        <p><strong>Contact Person:</strong> ${group.contact_person || 'N/A'}</p>
+                        <p><strong>Contact Email:</strong> ${group.contact_email || 'N/A'}</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">Group Members</div>
+                    <div class="card-body">
+                        <table class="table">
+                            <thead><tr><th>ID</th><th>Email</th><th>Role</th></tr></thead>
+                            <tbody>${users.map(u => `<tr><td>${u.id}</td><td>${u.email}</td><td>${u.role}</td></tr>`).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+        // --- Audit Logs ---
+        async function fetchAuditLogs() {
+            const view = document.getElementById('audit-logs-view');
+            view.innerHTML = `<h2><i class="fas fa-file-alt me-2"></i>Audit Logs</h2><div class="card shadow-sm"><div class="card-body"><table class="table table-hover"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody id="audit-logs-body"></tbody></table></div></div>`;
+            const response = await fetch('/audit-logs');
+            const logs = await response.json();
+            document.getElementById('audit-logs-body').innerHTML = logs.map(l => `
+                <tr>
+                    <td>${new Date(l.timestamp).toLocaleString()}</td>
+                    <td>${l.user_email}</td>
+                    <td>${l.action}</td>
+                    <td>${l.entity_type} #${l.entity_id}</td>
+                    <td>${l.details}</td>
+                </tr>
+            `).join('');
+        }
+        // --- Modal Logic ---
+        async function openAssignModal(ticketId) {
+            document.getElementById('assign-ticket-id').value = ticketId;
+            const techSelect = document.getElementById('tech-select');
+            const response = await fetch('/technicians');
+            techSelect.innerHTML = (await response.json()).map(tech => `<option value="${tech.id}">${tech.email}</option>`).join('');
+            state.modals.assign.show();
+        }
+        async function submitAssignment() {
+            const ticketId = document.getElementById('assign-ticket-id').value;
+            const techId = document.getElementById('tech-select').value;
+            const response = await fetch(`/ticket/${ticketId}/assign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tech_id: parseInt(techId) }) });
+            state.modals.assign.hide();
+            if (response.ok) {
+                showToast('Ticket assigned successfully.');
+                fetchTicketDetails(ticketId);
+            } else {
+                showToast('Failed to assign ticket.', true);
+            }
+        }
+       
+        function openResolveModal(ticketId) {
+            document.getElementById('resolve-ticket-id').value = ticketId;
+            document.getElementById('resolve-ticket-form').reset();
+            state.modals.resolve.show();
+        }
+        async function submitResolution() {
+            const ticketId = document.getElementById('resolve-ticket-id').value;
+            const body = {
+                resolution_notes: document.getElementById('resolution-notes').value,
+                time_spent: parseInt(document.getElementById('time-spent-input').value) || 0
+            };
+            const response = await fetch(`/ticket/${ticketId}/resolve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            state.modals.resolve.hide();
+            if (response.ok) {
+                showToast('Ticket resolved successfully.');
+                fetchTicketDetails(ticketId);
+            } else {
+                showToast('Failed to resolve ticket.', true);
+            }
+        }
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const mainContent = document.querySelector('.main-content');
+            const viewIds = ['dashboard-view', 'create-ticket-view', 'ticket-detail-view', 'users-view', 'user-detail-view', 'assets-view', 'analytics-view', 'chatroom-view', 'kb-view', 'register-view', 'pc-repair-admin-view', 'groups-view', 'pricing-view', 'audit-logs-view'];
+            viewIds.forEach(id => {
+                if (!document.getElementById(id)) {
+                    const div = document.createElement('div');
+                    div.id = id;
+                    div.className = 'view';
+                    mainContent.appendChild(div);
+                }
+            });
+            state.toast = new bootstrap.Toast('#notification-toast');
+            state.modals.assign = new bootstrap.Modal('#assignTicketModal');
+            state.modals.resolve = new bootstrap.Modal('#resolveTicketModal');
+           
+            document.getElementById('login-form').addEventListener('submit', handleLogin);
+            document.getElementById('pc-repair-form').addEventListener('submit', handlePcRepairSubmit);
+            document.getElementById('submit-assignment-btn').addEventListener('click', submitAssignment);
+            document.getElementById('submit-resolution-btn').addEventListener('click', submitResolution);
+            checkLoginStatus();
+        });
+    </script>
+</body>
+</html>
